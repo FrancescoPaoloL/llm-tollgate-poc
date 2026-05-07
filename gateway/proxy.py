@@ -1,11 +1,9 @@
 from dataclasses import dataclass
 from typing import Callable
-
 from gateway.rules.policy import check_policy, ToolPolicy
 from gateway.rules.injection import check_injection
 from gateway.rules.trust import score_response
 from gateway.logger import log_event
-
 
 @dataclass
 class GatewayResult:
@@ -14,12 +12,12 @@ class GatewayResult:
     response: str | None
     block_reason: str = ""
 
-
 class Gateway:
     def __init__(self, policy: dict[str, ToolPolicy] | None = None, log_stream=None):
         self.policy = policy
         self.log_stream = log_stream
 
+    # logs the block event and returns a BLOCKED result
     def _block(self, tool_name, tool_input, policy_result, injection_result, trust_result, reason) -> GatewayResult:
         log_event(
             tool_name=tool_name,
@@ -35,7 +33,6 @@ class Gateway:
 
     def call(self, tool_name: str, tool_input: dict, tool_fn: Callable[[dict], str]) -> GatewayResult:
         policy_result = check_policy(tool_name, self.policy)
-
         if not policy_result.allowed:
             return self._block(tool_name, tool_input, policy_result, None, None, policy_result.reason)
 
@@ -46,6 +43,7 @@ class Gateway:
             return self._block(tool_name, tool_input, policy_result, None, None, reason)
 
         injection_result = check_injection(raw_response)
+
         trust_result = score_response(raw_response)
 
         if injection_result.detected:
@@ -69,3 +67,4 @@ class Gateway:
             stream=self.log_stream,
         )
         return GatewayResult(allowed=True, verdict="ALLOWED", response=raw_response)
+
