@@ -32,7 +32,7 @@ class Gateway:
         return GatewayResult(allowed=False, verdict="BLOCKED", response=None, block_reason=reason)
 
     def call(self, tool_name: str, tool_input: dict, tool_fn: Callable[[dict], str]) -> GatewayResult:
-        policy_result = check_policy(tool_name, self.policy)
+        policy_result = check_policy(tool_name, tool_input, self.policy)
         if not policy_result.allowed:
             return self._block(tool_name, tool_input, policy_result, None, None, policy_result.reason)
 
