@@ -8,22 +8,23 @@ class Scope(str, Enum):
     FILESYSTEM = "filesystem"
     EXEC       = "exec"
 
-# Policy for a single tool: is it allowed, what can it access, and why not (if denied)
+# Policy for a single tool
 @dataclass
 class ToolPolicy:
     allowed: bool = True
     scopes: list[Scope] = field(default_factory=list)
     reason: str = ""
+    taints_output: bool = False
 
 @dataclass
 class PolicyResult:
     allowed: bool
     tool_name: str
     reason: str = ""
+    taints_output: bool = False
 
-# The default ruleset: maps each tool name to its policy
 DEFAULT_POLICY: dict[str, ToolPolicy] = {
-    "search_web":    ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY]),
+    "search_web":    ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
     "read_file":     ToolPolicy(allowed=True,  scopes=[Scope.FILESYSTEM, Scope.READ_ONLY]),
     "write_file":    ToolPolicy(allowed=False, reason="write operations not permitted in this session"),
     "run_shell":     ToolPolicy(allowed=False, reason="exec scope disabled"),
@@ -31,6 +32,7 @@ DEFAULT_POLICY: dict[str, ToolPolicy] = {
     "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval"),
 }
 
+# returns an empty string if the input is safe, or a reason if it is not.
 Validator = Callable[[dict], str]
 
 # Reject path traversal attempts in any string field of the input.
@@ -75,5 +77,5 @@ def check_policy(tool_name: str, tool_input: dict, policy: dict[str, ToolPolicy]
         if failure_reason:
             return PolicyResult(allowed=False, tool_name=tool_name, reason=failure_reason)
 
-    return PolicyResult(allowed=True, tool_name=tool_name)
+    return PolicyResult(allowed=True, tool_name=tool_name, taints_output=entry.taints_output)
 

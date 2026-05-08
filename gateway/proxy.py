@@ -3,12 +3,13 @@ from typing import Callable
 from gateway.rules.policy import check_policy, ToolPolicy
 from gateway.rules.injection import check_injection
 from gateway.rules.trust import score_response
+from gateway.taint import TaintContext
 from gateway.logger import log_event
 
 @dataclass
 class GatewayResult:
     allowed: bool
-    verdict: str        # "ALLOWED" | "BLOCKED"
+    verdict: str                                        # read: ALLOWED" | "BLOCKED"
     response: str | None
     block_reason: str = ""
 
@@ -31,10 +32,15 @@ class Gateway:
         )
         return GatewayResult(allowed=False, verdict="BLOCKED", response=None, block_reason=reason)
 
-    def call(self, tool_name: str, tool_input: dict, tool_fn: Callable[[dict], str]) -> GatewayResult:
+    def call(self, tool_name: str, tool_input: dict, tool_fn: Callable[[dict], str], taint: TaintContext | None = None) -> GatewayResult:
         policy_result = check_policy(tool_name, tool_input, self.policy)
         if not policy_result.allowed:
             return self._block(tool_name, tool_input, policy_result, None, None, policy_result.reason)
+
+        if taint is not None:
+            taint_reason = taint.find_taint(tool_input)
+            if taint_reason:
+                return self._block(tool_name, tool_input, policy_result, None, None, f"taint propagation: {taint_reason}")
 
         try:
             raw_response: str = tool_fn(tool_input)
@@ -56,6 +62,9 @@ class Gateway:
         if not trust_result.passed:
             reason = f"trust score too low ({trust_result.score}): {'; '.join(trust_result.signals)}"
             return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason)
+
+        if taint is not None and policy_result.taints_output:
+            taint.mark_tainted(raw_response)
 
         log_event(
             tool_name=tool_name,
