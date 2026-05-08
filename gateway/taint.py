@@ -4,6 +4,14 @@ from dataclasses import dataclass, field
 # Avoids false positives on common short values like "Zurich" or "ok".
 _MIN_TAINT_LEN = 8
 
+
+@dataclass
+class TaintInfo:
+    flagged: bool = False
+    reason: str = ""
+    output_marked: bool = False
+
+
 # Tracks responses that came from untrusted sources across a sequence of tool calls
 @dataclass
 class TaintContext:

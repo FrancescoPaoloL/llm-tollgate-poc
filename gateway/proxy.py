@@ -3,7 +3,7 @@ from typing import Callable
 from gateway.rules.policy import check_policy, ToolPolicy
 from gateway.rules.injection import check_injection
 from gateway.rules.trust import score_response
-from gateway.taint import TaintContext
+from gateway.taint import TaintContext, TaintInfo
 from gateway.logger import log_event
 
 @dataclass
@@ -19,7 +19,7 @@ class Gateway:
         self.log_stream = log_stream
 
     # logs the block event and returns a BLOCKED result
-    def _block(self, tool_name, tool_input, policy_result, injection_result, trust_result, reason) -> GatewayResult:
+    def _block(self, tool_name, tool_input, policy_result, injection_result, trust_result, reason, taint_info=None) -> GatewayResult:
         log_event(
             tool_name=tool_name,
             tool_input=tool_input,
@@ -28,6 +28,7 @@ class Gateway:
             trust=trust_result,
             verdict="BLOCKED",
             block_reason=reason,
+            taint=taint_info,
             stream=self.log_stream,
         )
         return GatewayResult(allowed=False, verdict="BLOCKED", response=None, block_reason=reason)
@@ -40,13 +41,18 @@ class Gateway:
         if taint is not None:
             taint_reason = taint.find_taint(tool_input)
             if taint_reason:
-                return self._block(tool_name, tool_input, policy_result, None, None, f"taint propagation: {taint_reason}")
+                taint_info = TaintInfo(flagged=True, reason=taint_reason)
+                return self._block(tool_name, tool_input, policy_result, None, None, f"taint propagation: {taint_reason}", taint_info)
+
+        # From here on the taint check on the input has passed (or wasn't run).
+        # Use this default so the audit log stays consistent across post-taint blocks.
+        clean_taint = TaintInfo() if taint is not None else None
 
         try:
             raw_response: str = tool_fn(tool_input)
         except Exception as exc:
             reason = f"tool raised an exception: {type(exc).__name__}: {exc}"
-            return self._block(tool_name, tool_input, policy_result, None, None, reason)
+            return self._block(tool_name, tool_input, policy_result, None, None, reason, clean_taint)
 
         injection_result = check_injection(raw_response)
 
@@ -57,14 +63,18 @@ class Gateway:
                 f"[{injection_result.severity}] injection detected: "
                 f"{injection_result.pattern_desc} — matched: '{injection_result.matched_text}'"
             )
-            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason)
+            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint)
 
         if not trust_result.passed:
             reason = f"trust score too low ({trust_result.score}): {'; '.join(trust_result.signals)}"
-            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason)
+            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint)
 
+        output_marked = False
         if taint is not None and policy_result.taints_output:
             taint.mark_tainted(raw_response)
+            output_marked = True
+
+        taint_info = TaintInfo(output_marked=output_marked) if taint is not None else None
 
         log_event(
             tool_name=tool_name,
@@ -73,6 +83,7 @@ class Gateway:
             injection=injection_result,
             trust=trust_result,
             verdict="ALLOWED",
+            taint=taint_info,
             stream=self.log_stream,
         )
         return GatewayResult(allowed=True, verdict="ALLOWED", response=raw_response)

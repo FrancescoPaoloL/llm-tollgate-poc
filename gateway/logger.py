@@ -6,6 +6,7 @@ from typing import IO
 from gateway.rules.policy import PolicyResult
 from gateway.rules.injection import InjectionResult
 from gateway.rules.trust import TrustResult
+from gateway.taint import TaintInfo
 
 def _hash_input(tool_input: dict) -> str:
     raw = json.dumps(tool_input, sort_keys=True, ensure_ascii=False)
@@ -19,6 +20,7 @@ def log_event(
     trust: TrustResult | None,
     verdict: str,
     block_reason: str = "",
+    taint: TaintInfo | None = None,
     stream: IO[str] | None = None,
 ) -> None:
     event = {
@@ -37,7 +39,13 @@ def log_event(
             "passed":  trust.passed,
             "signals": trust.signals,
         },
+        "taint":      None if taint is None else {
+            "flagged":       taint.flagged,
+            "reason":        taint.reason,
+            "output_marked": taint.output_marked,
+        },
         "verdict":      verdict,
         "block_reason": block_reason,
     }
     print(json.dumps(event), file=stream or sys.stdout)
+
