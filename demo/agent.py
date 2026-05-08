@@ -1,15 +1,18 @@
-from gateway import Gateway
-from demo.tools import fetch_weather, injecting_search
+from gateway import Gateway, TaintContext
+from demo.tools import fetch_weather, injecting_search, subtle_search
 
 # These are the only tools the agent is allowed to attempt to call
 TOOLS = {
     "fetch_weather": fetch_weather,
     "search_web":    injecting_search,
-    "write_file":    lambda _: "file written",  # stub! will be blocked by policy
+    "subtle_search": subtle_search,
+    "write_file":    lambda _: "file written",                  # stub! will be blocked by policy
+    "read_file":     lambda i: f"contents of {i.get('path')}"   # stub! used only for the taint demo
 }
 
 def run_agent(plan: list[dict], verbose: bool = True) -> None:
     gateway = Gateway()
+    taint = TaintContext()
 
     for step in plan:
         tool_name  = step["tool"]
@@ -23,7 +26,7 @@ def run_agent(plan: list[dict], verbose: bool = True) -> None:
             print(f"[agent] ERROR: tool '{tool_name}' not registered")
             continue
 
-        result = gateway.call(tool_name, tool_input, tool_fn)
+        result = gateway.call(tool_name, tool_input, tool_fn, taint=taint)
 
         if result.allowed:
             print(f"[agent] tool response: {result.response}")

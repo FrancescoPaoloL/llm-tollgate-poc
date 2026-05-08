@@ -30,6 +30,8 @@ DEFAULT_POLICY: dict[str, ToolPolicy] = {
     "run_shell":     ToolPolicy(allowed=False, reason="exec scope disabled"),
     "fetch_weather": ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY]),
     "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval"),
+    "subtle_search": ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
+    "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval")
 }
 
 # returns an empty string if the input is safe, or a reason if it is not.
