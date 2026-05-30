@@ -29,6 +29,7 @@ class PolicyResult:
 
 DEFAULT_POLICY: dict[str, ToolPolicy] = {
     "search_web":    ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
+    "reworded_search": ToolPolicy(allowed=True, scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
     "read_file":     ToolPolicy(allowed=True,  scopes=[Scope.FILESYSTEM, Scope.READ_ONLY]),
     "write_file":    ToolPolicy(allowed=False, reason="write operations not permitted in this session"),
     "run_shell":     ToolPolicy(allowed=False, reason="exec scope disabled"),

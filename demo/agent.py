@@ -1,10 +1,11 @@
 from gateway import Gateway, TaintContext
-from demo.tools import fetch_weather, injecting_search, subtle_search
+from demo.tools import fetch_weather, injecting_search, subtle_search, reworded_search
 
 # These are the only tools the agent is allowed to attempt to call
 TOOLS = {
     "fetch_weather": fetch_weather,
     "search_web":    injecting_search,
+    "reworded_search": reworded_search,
     "subtle_search": subtle_search,
     "write_file":    lambda _: "file written",                  # stub! will be blocked by policy
     "read_file":     lambda i: f"contents of {i.get('path')}"   # stub! used only for the taint demo

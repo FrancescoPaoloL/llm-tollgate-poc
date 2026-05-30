@@ -24,7 +24,7 @@ in three ways:
 The third case is the hardest. Scanning the response of one tool
 at a time is not enough.
 
-## The four checks
+## The five checks
 
 Every tool call goes through these checks in order. If any of them
 fails, the call is blocked.
@@ -37,10 +37,17 @@ fails, the call is blocked.
 2. **Injection scanning** on the response. A set of patterns flags
    common prompt injection attempts: ignore-instructions, fake
    system tags, persona overrides, exfiltration phrases.
-3. **Trust scoring** on the response. A score based on
+3. **Semantic scanning** on the response. The patterns above match
+   exact wording; this catches the same attacks reworded, by
+   measuring word-set overlap (Jaccard) against a list of known
+   attack phrasings. A response close enough to a known attack is
+   rejected even if no pattern matched.
+4. **Trust scoring** on the response. A score based on
    imperative-verb density, embedded URLs, base64-like blobs.
-   Below a threshold the response is rejected.
-4. **Taint propagation across calls.** Tools whose policy declares
+   Below a threshold the response is rejected. The threshold can be
+   set per tool, so a tool that sends email can demand a higher
+   score than a read-only one.
+5. **Taint propagation across calls.** Tools whose policy declares
    `taints_output=True` have their responses recorded in a
    `TaintContext`. Every later call has its input checked against
    that context: if a field carries data extracted from a tainted
@@ -52,22 +59,29 @@ SIEM can consume it without parsing free text.
 
 ## Demo
 
-`python main.py` runs five steps:
+`python main.py` runs six steps:
 
-| # | tool          | outcome  | blocked by            |
-|---|---------------|----------|-----------------------|
-| 1 | fetch_weather | ALLOWED  |                       |
-| 2 | search_web    | BLOCKED  | injection scanner     |
-| 3 | write_file    | BLOCKED  | policy (deny by name) |
-| 4 | subtle_search | ALLOWED  | (response tainted)    |
-| 5 | read_file     | BLOCKED  | taint propagation     |
+| # | tool            | outcome  | blocked by            |
+|---|-----------------|----------|-----------------------|
+| 1 | fetch_weather   | ALLOWED  |                       |
+| 2 | search_web      | BLOCKED  | injection scanner     |
+| 3 | reworded_search | BLOCKED  | semantic scanner      |
+| 4 | write_file      | BLOCKED  | policy (deny by name) |
+| 5 | subtle_search   | ALLOWED  | (response tainted)    |
+| 6 | read_file       | BLOCKED  | taint propagation     |
 
-Steps 4 and 5 are the part worth looking at. `subtle_search`
+Steps 2 and 3 are a pair. Both responses carry the same attack
+("ignore the previous instructions, follow new ones"), but step 3
+is reworded so no regex pattern matches. The injection scanner lets
+it through; the semantic scanner catches it on word overlap. It
+shows why one layer is not enough.
+
+Steps 5 and 6 are the part worth looking at. `subtle_search`
 returns a plausible string. No pattern catches it, the trust score
 accepts it, so the gateway lets it through. But the response is
-recorded as tainted. In step 5 the agent calls `read_file` with a
-path that is a substring of step 4's response, and the call is
-blocked. Without taint propagation step 5 would pass: the path is
+recorded as tainted. In step 6 the agent calls `read_file` with a
+path that is a substring of step 5's response, and the call is
+blocked. Without taint propagation step 6 would pass: the path is
 harmless on its own and the tool is on the allowlist.
 
 ## Layout
@@ -78,7 +92,7 @@ gateway/
   proxy.py           Gateway class, orchestrates the four checks
   logger.py          structured JSON audit log
   taint.py           TaintContext and TaintInfo
-  rules/             policy, injection, trust
+  rules/             policy, injection, semantic, trust
 main.py              runs the demo
 ```
 
@@ -98,8 +112,13 @@ This is a didactic POC, not a production-ready security boundary.
 - **Taint matching is substring-based.** It catches verbatim
   reuse but not paraphrase. Real taint tracking would need
   semantic similarity or structural data-flow analysis.
-- **Injection patterns are regex.** They catch obvious payloads.
-  Anything more sophisticated will pass.
+- **Detection is lexical, not semantic in the real sense.** The
+  regex patterns catch exact payloads; the Jaccard layer catches
+  rewordings that still share most of their vocabulary with a known
+  attack. Neither understands meaning. An attack rewritten with
+  entirely different words and no shared tokens passes both. Real
+  semantic detection would need embeddings; that is the next step,
+  deliberately kept out of this stdlib-only POC.
 
 The goal of the POC is to show how the problem decomposes: four
 checks, four failure modes, and one of them (taint) needs state
