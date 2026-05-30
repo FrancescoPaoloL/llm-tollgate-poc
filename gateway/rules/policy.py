@@ -15,6 +15,9 @@ class ToolPolicy:
     scopes: list[Scope] = field(default_factory=list)
     reason: str = ""
     taints_output: bool = False
+    # Minimum trust score this tool's output must reach. None means use the
+    # global default. Higher = stricter, for tools that can cause more harm.
+    trust_threshold: float | None = None
 
 @dataclass
 class PolicyResult:
@@ -22,6 +25,7 @@ class PolicyResult:
     tool_name: str
     reason: str = ""
     taints_output: bool = False
+    trust_threshold: float | None = None
 
 DEFAULT_POLICY: dict[str, ToolPolicy] = {
     "search_web":    ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
@@ -29,9 +33,8 @@ DEFAULT_POLICY: dict[str, ToolPolicy] = {
     "write_file":    ToolPolicy(allowed=False, reason="write operations not permitted in this session"),
     "run_shell":     ToolPolicy(allowed=False, reason="exec scope disabled"),
     "fetch_weather": ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY]),
-    "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval"),
     "subtle_search": ToolPolicy(allowed=True,  scopes=[Scope.NETWORK, Scope.READ_ONLY], taints_output=True),
-    "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval")
+    "send_email":    ToolPolicy(allowed=False, reason="outbound comms require explicit approval"),
 }
 
 # returns an empty string if the input is safe, or a reason if it is not.
@@ -79,5 +82,5 @@ def check_policy(tool_name: str, tool_input: dict, policy: dict[str, ToolPolicy]
         if failure_reason:
             return PolicyResult(allowed=False, tool_name=tool_name, reason=failure_reason)
 
-    return PolicyResult(allowed=True, tool_name=tool_name, taints_output=entry.taints_output)
+    return PolicyResult(allowed=True, tool_name=tool_name, taints_output=entry.taints_output, trust_threshold=entry.trust_threshold)
 

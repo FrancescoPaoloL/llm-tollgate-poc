@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Callable
 from gateway.rules.policy import check_policy, ToolPolicy
 from gateway.rules.injection import check_injection
+from gateway.rules.semantic import check_semantic
 from gateway.rules.trust import score_response
 from gateway.taint import TaintContext, TaintInfo
 from gateway.logger import log_event
@@ -19,12 +20,13 @@ class Gateway:
         self.log_stream = log_stream
 
     # logs the block event and returns a BLOCKED result
-    def _block(self, tool_name, tool_input, policy_result, injection_result, trust_result, reason, taint_info=None) -> GatewayResult:
+    def _block(self, tool_name, tool_input, policy_result, injection_result, trust_result, reason, taint_info=None, semantic_result=None) -> GatewayResult:
         log_event(
             tool_name=tool_name,
             tool_input=tool_input,
             policy=policy_result,
             injection=injection_result,
+            semantic=semantic_result,
             trust=trust_result,
             verdict="BLOCKED",
             block_reason=reason,
@@ -56,18 +58,26 @@ class Gateway:
 
         injection_result = check_injection(raw_response)
 
-        trust_result = score_response(raw_response)
+        semantic_result = check_semantic(raw_response)
+
+        trust_result = score_response(raw_response, policy_result.trust_threshold)
 
         if injection_result.detected:
             reason = (
                 f"[{injection_result.severity}] injection detected: "
                 f"{injection_result.pattern_desc} — matched: '{injection_result.matched_text}'"
             )
-            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint)
+            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint, semantic_result)
+
+        # The regex rules above catch exact patterns; this catches the same
+        # attack reworded enough to slip past them.
+        if semantic_result.detected:
+            reason = f"semantic match to known attack ({semantic_result.score}): '{semantic_result.closest_attack}'"
+            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint, semantic_result)
 
         if not trust_result.passed:
             reason = f"trust score too low ({trust_result.score}): {'; '.join(trust_result.signals)}"
-            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint)
+            return self._block(tool_name, tool_input, policy_result, injection_result, trust_result, reason, clean_taint, semantic_result)
 
         output_marked = False
         if taint is not None and policy_result.taints_output:
@@ -81,6 +91,7 @@ class Gateway:
             tool_input=tool_input,
             policy=policy_result,
             injection=injection_result,
+            semantic=semantic_result,
             trust=trust_result,
             verdict="ALLOWED",
             taint=taint_info,

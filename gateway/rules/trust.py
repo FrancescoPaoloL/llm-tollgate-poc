@@ -25,7 +25,8 @@ class TrustResult:
     passed: bool
     signals: list[str] = field(default_factory=list)
 
-def score_response(response: str) -> TrustResult:
+def score_response(response: str, threshold: float | None = None) -> TrustResult:
+    pass_mark = TRUST_THRESHOLD if threshold is None else threshold
     # Accumulate (penalty_amount, reason) pairs as red flags are found
     penalties: list[tuple[float, str]] = []
     text = response.strip()
@@ -53,5 +54,5 @@ def score_response(response: str) -> TrustResult:
         penalties.append((0.2, "excessive escape sequences"))
 
     score = round(max(0.0, 1.0 - sum(p for p, _ in penalties)), 3)
-    return TrustResult(score=score, passed=score >= TRUST_THRESHOLD, signals=[s for _, s in penalties])
+    return TrustResult(score=score, passed=score >= pass_mark, signals=[s for _, s in penalties])
 

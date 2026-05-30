@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import IO
 from gateway.rules.policy import PolicyResult
 from gateway.rules.injection import InjectionResult
+from gateway.rules.semantic import SemanticResult
 from gateway.rules.trust import TrustResult
 from gateway.taint import TaintInfo
 
@@ -17,6 +18,7 @@ def log_event(
     tool_input: dict,
     policy: PolicyResult,
     injection: InjectionResult | None,
+    semantic: SemanticResult | None,
     trust: TrustResult | None,
     verdict: str,
     block_reason: str = "",
@@ -33,6 +35,11 @@ def log_event(
             "severity":     injection.severity,
             "pattern":      injection.pattern_desc,
             "matched_text": injection.matched_text,
+        },
+        "semantic":   None if semantic is None else {
+            "detected":       semantic.detected,
+            "score":          semantic.score,
+            "closest_attack": semantic.closest_attack,
         },
         "trust":      None if trust is None else {
             "score":   trust.score,
